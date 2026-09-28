@@ -15,6 +15,7 @@ import {
 } from './routeRoutingStrategy.js';
 import { type DownstreamRoutingPolicy, EMPTY_DOWNSTREAM_ROUTING_POLICY } from './downstreamPolicyTypes.js';
 import { isUsableAccountToken } from './accountTokenService.js';
+import { selectNexavlinksPriority, isNexavlinksSite } from './nexavlinksService.js';
 import { getOauthInfoFromAccount } from './oauth/oauthAccount.js';
 import { parseCodexQuotaResetHint } from './oauth/quota.js';
 import {
@@ -56,6 +57,7 @@ interface RouteMatch {
 type RouteChannelCandidate = RouteMatch['channels'][number];
 
 interface SelectedChannel {
+  routingReason?: string;
   channel: typeof schema.routeChannels.$inferSelect;
   account: typeof schema.accounts.$inferSelect;
   site: typeof schema.sites.$inferSelect;
@@ -1882,6 +1884,7 @@ export class TokenRouter {
     preferredChannelId: number,
     downstreamPolicy: DownstreamRoutingPolicy = DEFAULT_DOWNSTREAM_POLICY,
     excludeChannelIds: number[] = [],
+    respectDailyPriority = false,
   ): Promise<SelectedChannel | null> {
     if (!isModelAllowedByDownstreamPolicy(requestedModel, downstreamPolicy)) return null;
     const normalizedPreferredChannelId = Math.trunc(preferredChannelId || 0);
@@ -1896,6 +1899,8 @@ export class TokenRouter {
       normalizedPreferredChannelId,
       downstreamPolicy,
       excludeChannelIds,
+      true,
+      respectDailyPriority,
     );
   }
 
@@ -1963,11 +1968,11 @@ export class TokenRouter {
     });
   }
 
-  private explainSelectionFromMatch(
+  private async explainSelectionFromMatch(
     match: RouteMatch | null,
     requestedModel: string,
     options: ExplainSelectionOptions = {},
-  ): RouteDecisionExplanation {
+  ): Promise<RouteDecisionExplanation> {
     const excludeChannelIds = options.excludeChannelIds ?? [];
     const downstreamPolicy = options.downstreamPolicy ?? DEFAULT_DOWNSTREAM_POLICY;
 
@@ -2052,6 +2057,19 @@ export class TokenRouter {
         summary,
         candidates,
       };
+    }
+
+    const dailyPriority = await this.getDailyPriorityCandidates(available, runtimeModelResolver, nowMs);
+    if (dailyPriority.length) {
+      const ids = new Set(dailyPriority.map((row) => row.channel.id));
+      for (const candidate of candidates) {
+        if (candidate.eligible && !ids.has(candidate.channelId)) {
+          candidate.eligible = false;
+          candidate.reason = 'NexaVlinks 未签到且未达今日消费目标的账号优先';
+        }
+      }
+      available.splice(0, available.length, ...dailyPriority);
+      summary.push(`NexaVlinks 签到消费优先：账号 #${dailyPriority[0].account.id}；无符合条件账号时恢复原路由`);
     }
 
     if (routeStrategy === 'round_robin') {
@@ -2839,6 +2857,27 @@ export class TokenRouter {
 
   // --- Private methods ---
 
+  private async getDailyPriorityCandidates(
+    available: RouteChannelCandidate[],
+    modelName: string | ((candidate: RouteChannelCandidate) => string),
+    nowMs: number,
+  ): Promise<RouteChannelCandidate[]> {
+    if (!available.some((row) => isNexavlinksSite(row.site))) return [];
+    const resolveModel = typeof modelName === 'function' ? modelName : () => modelName;
+    const healthy = available.filter((row) => {
+      const health = getSiteRuntimeHealthDetails(row.site.id, resolveModel(row), nowMs);
+      return !isOauthRouteUnitCandidate(row) && !health.globalBreakerOpen && !health.modelBreakerOpen
+        && !isChannelRecentlyFailed(row.channel, nowMs);
+    });
+    try {
+      return await selectNexavlinksPriority(healthy);
+    } catch {
+      // 辅助统计不可用时保留原路由，不让签到功能中断模型调用。
+      console.warn('[nexavlinks] daily priority unavailable; using original routing');
+      return [];
+    }
+  }
+
   private async selectFromMatch(
     match: RouteMatch,
     requestedModel: string,
@@ -2867,6 +2906,9 @@ export class TokenRouter {
     ));
 
     if (available.length === 0) return null;
+
+    const dailyPriority = await this.getDailyPriorityCandidates(available, runtimeModelResolver, nowMs);
+    if (dailyPriority.length) available.splice(0, available.length, ...dailyPriority);
 
     if (routeStrategy === 'round_robin') {
       const breakerFiltered = filterSiteRuntimeBrokenCandidatesByModel(available, runtimeModelResolver, nowMs);
@@ -2980,6 +3022,7 @@ export class TokenRouter {
     downstreamPolicy: DownstreamRoutingPolicy,
     excludeChannelIds: number[] = [],
     recordSelection = true,
+    respectDailyPriority = false,
   ): Promise<SelectedChannel | null> {
     const mappedModel = resolveMappedModel(requestedModel, match.route.modelMapping);
     const requestedByDisplayName = isRouteDisplayNameMatch(requestedModel, match.route.displayName);
@@ -3000,6 +3043,13 @@ export class TokenRouter {
         downstreamPolicy,
       }).length === 0
     ));
+
+    if (respectDailyPriority) {
+      const dailyPriority = await this.getDailyPriorityCandidates(available, runtimeModelResolver, nowMs);
+      if (dailyPriority.length && !dailyPriority.some((row) => row.channel.id === preferredChannelId)) {
+        return this.selectFromMatch(match, requestedModel, downstreamPolicy, excludeChannelIds, recordSelection);
+      }
+    }
 
     const preferred = available.find((candidate) => candidate.channel.id === preferredChannelId);
     if (!preferred) return null;

@@ -170,9 +170,9 @@ class ProxyChannelCoordinator {
     return entry.channelId;
   }
 
-  bindStickyChannel(stickySessionKey: string | null | undefined, channelId: number, accountIdentity?: SessionScopedChannelInput): void {
+  bindStickyChannel(stickySessionKey: string | null | undefined, channelId: number): void {
     if (!config.proxyStickySessionEnabled) return;
-    if (!isSessionScopedChannel(accountIdentity)) return;
+    // 会话绑定适用于所有凭证类型；Session/OAuth 的并发限制仍单独判断。
     const normalizedKey = String(stickySessionKey || '').trim();
     if (!normalizedKey || !Number.isFinite(channelId) || channelId <= 0) return;
     cleanupExpiredStickyBindings();

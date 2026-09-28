@@ -4,6 +4,14 @@ release/
 data/*
 !data/.gitkeep
 .env
+.env.*
+!.env.example
+profile/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
 *.log
 *.tar.gz
 logs/

@@ -35,7 +35,7 @@ describe('proxyChannelCoordinator', () => {
     vi.useRealTimers();
   });
 
-  it('stores sticky bindings for session-scoped channels and expires them by ttl', async () => {
+  it('stores sticky bindings and expires them by ttl', async () => {
     const key = proxyChannelCoordinator.buildStickySessionKey({
       clientKind: 'codex',
       sessionId: 'turn-123',
@@ -44,14 +44,14 @@ describe('proxyChannelCoordinator', () => {
       downstreamApiKeyId: 9,
     });
 
-    proxyChannelCoordinator.bindStickyChannel(key, 42, JSON.stringify({ credentialMode: 'session' }));
+    proxyChannelCoordinator.bindStickyChannel(key, 42);
     expect(proxyChannelCoordinator.getStickyChannelId(key)).toBe(42);
 
     await vi.advanceTimersByTimeAsync(31_100);
     expect(proxyChannelCoordinator.getStickyChannelId(key)).toBeNull();
   });
 
-  it('does not store sticky bindings for apikey-only channels', () => {
+  it('stores sticky bindings for apikey-only channels without limiting their concurrency', () => {
     const key = proxyChannelCoordinator.buildStickySessionKey({
       clientKind: 'codex',
       sessionId: 'turn-456',
@@ -60,8 +60,12 @@ describe('proxyChannelCoordinator', () => {
       downstreamApiKeyId: 9,
     });
 
-    proxyChannelCoordinator.bindStickyChannel(key, 42, JSON.stringify({ credentialMode: 'apikey' }));
-    expect(proxyChannelCoordinator.getStickyChannelId(key)).toBeNull();
+    proxyChannelCoordinator.bindStickyChannel(key, 42);
+    expect(proxyChannelCoordinator.getStickyChannelId(key)).toBe(42);
+    expect(proxyChannelCoordinator.getChannelLoadSnapshot({
+      channelId: 42,
+      accountExtraConfig: JSON.stringify({ credentialMode: 'apikey' }),
+    }).concurrencyLimit).toBe(0);
   });
 
   it('treats structured oauth providers as session-scoped even when extraConfig omits oauth.provider', () => {
@@ -73,11 +77,13 @@ describe('proxyChannelCoordinator', () => {
       downstreamApiKeyId: 9,
     });
 
-    proxyChannelCoordinator.bindStickyChannel(key, 42, {
-      oauthProvider: 'codex',
-      extraConfig: JSON.stringify({ credentialMode: 'session' }),
-    });
+    proxyChannelCoordinator.bindStickyChannel(key, 42);
     expect(proxyChannelCoordinator.getStickyChannelId(key)).toBe(42);
+    expect(proxyChannelCoordinator.getChannelLoadSnapshot({
+      channelId: 42,
+      accountOauthProvider: 'codex',
+      accountExtraConfig: JSON.stringify({ credentialMode: 'session' }),
+    }).sessionScoped).toBe(true);
   });
 
   it('queues requests behind the active lease and grants the next waiter after release', async () => {

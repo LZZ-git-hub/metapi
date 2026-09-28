@@ -38,7 +38,7 @@ export function buildStartupEndpoints(input: StartupSummaryInput): StartupEndpoi
 }
 
 export function buildStartupSummaryLines(input: StartupSummaryInput): string[] {
-  const endpoints = buildStartupEndpoints(input);
+  const endpoints = buildStartupEndpoints({ ...input, authToken: '<REDACTED>', proxyToken: '<REDACTED>' });
 
   return [
     `metapi running on ${input.host}:${input.port}`,

@@ -56,17 +56,6 @@ function firstNonEmptyTrimmedString(...values: unknown[]): string {
   return '';
 }
 
-function firstMeaningfulValue(...values: unknown[]): unknown {
-  for (const value of values) {
-    if (typeof value === 'string') {
-      if (value.trim()) return value;
-      continue;
-    }
-    if (value !== undefined && value !== null) return value;
-  }
-  return undefined;
-}
-
 function toTextBlockType(role: string): 'input_text' | 'output_text' {
   return role === 'assistant' ? 'output_text' : 'input_text';
 }
@@ -243,11 +232,13 @@ export function normalizeResponsesMessageItem(item: Record<string, unknown>): Re
     return normalizeResponsesToolLifecycleItem(item) ?? item;
   }
 
+  // reasoning、item_reference 等有明确类型的历史项目不能改成普通消息。
+  if (type && type !== 'message') return item;
+
   const role = asTrimmedString(item.role).toLowerCase() || 'user';
-  const normalizedContent = normalizeResponsesMessageContent(
-    firstMeaningfulValue(item.content, item.text),
-    role,
-  );
+  // 空字符串也是已提供的内容，避免转为 undefined 后在序列化时丢失。
+  const content = item.content ?? item.text;
+  const normalizedContent = normalizeResponsesMessageContent(content, role);
 
   if (type === 'message') {
     return withNormalizedResponsesInputStatus({

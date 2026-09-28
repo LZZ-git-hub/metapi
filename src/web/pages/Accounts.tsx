@@ -12,6 +12,7 @@ import { useIsMobile } from '../components/useIsMobile.js';
 import DeleteConfirmModal from '../components/DeleteConfirmModal.js';
 import SiteBadgeLink from '../components/SiteBadgeLink.js';
 import AccountModelsModal from './accounts/AccountModelsModal.js';
+import { NexaPriorityPanel, NexaAccountUsage, NexaAccountCheckin, formatAccountBalance } from './accounts/Nexavlinks.js';
 import {
   buildAddAccountPrereqHint,
   buildVerifyFailureHint,
@@ -1032,6 +1033,8 @@ export default function Accounts() {
         {activeSegment === 'tokens' && embeddedTokenActions}
       </div>
 
+      {activeSegment === 'session' && accounts.some((account) => account.nexavlinks) && <NexaPriorityPanel onChanged={load} />}
+
       <ResponsiveFilterPanel
         isMobile={isMobile}
         mobileOpen={showMobileTools}
@@ -1770,7 +1773,7 @@ export default function Accounts() {
                           label="余额"
                           value={(
                             <div>
-                              <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>${(a.balance || 0).toFixed(2)}</div>
+                              <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{formatAccountBalance(a)}</div>
                               <div style={{ fontSize: 11, color: (a.todayReward || 0) > 0 ? 'var(--color-success)' : 'var(--color-text-muted)', fontWeight: 500 }}>
                                 +{(a.todayReward || 0).toFixed(2)}
                               </div>
@@ -1801,8 +1804,8 @@ export default function Accounts() {
                               )}
                             />
                             <MobileField
-                              label="签到"
-                              value={capabilities.canCheckin ? (
+                              label="签到 / 今日已用"
+                              value={a.nexavlinks ? <NexaAccountUsage account={a} /> : capabilities.canCheckin ? (
                                 <button
                                   type="button"
                                   className={`checkin-toggle-badge ${a.checkinEnabled ? 'is-on' : 'is-off'}`}
@@ -1861,7 +1864,7 @@ export default function Accounts() {
                                   {actionLoading[`refresh-${a.id}`] ? <span className="spinner spinner-sm" /> : '刷新'}
                                 </button>
                               )}
-                              {capabilities.canCheckin && (
+                              {a.nexavlinks ? <NexaAccountCheckin account={a} onChanged={load} /> : capabilities.canCheckin && (
                                 <button onClick={() => withLoading(`checkin-${a.id}`, () => api.triggerCheckin(a.id), '签到完成')} disabled={actionLoading[`checkin-${a.id}`]} className="btn btn-link btn-link-warning">
                                   {actionLoading[`checkin-${a.id}`] ? <span className="spinner spinner-sm" /> : '签到'}
                                 </button>
@@ -1900,7 +1903,7 @@ export default function Accounts() {
                     <th>运行健康状态</th>
                     <th>余额</th>
                     <th>已用</th>
-                    <th>签到</th>
+                    <th>签到 / 今日已用</th>
                     <th className="accounts-actions-col" style={{ textAlign: 'right' }}>操作</th>
                   </tr>
                 </thead>
@@ -1972,7 +1975,7 @@ export default function Accounts() {
                           })()}
                         </td>
                         <td style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>${(a.balance || 0).toFixed(2)}</div>
+                          <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{formatAccountBalance(a)}</div>
                           <div style={{ fontSize: 11, color: (a.todayReward || 0) > 0 ? 'var(--color-success)' : 'var(--color-text-muted)', fontWeight: 500 }}>
                             +{(a.todayReward || 0).toFixed(2)}
                           </div>
@@ -1984,7 +1987,7 @@ export default function Accounts() {
                           </div>
                         </td>
                         <td>
-                          {capabilities.canCheckin ? (
+                          {a.nexavlinks ? <NexaAccountUsage account={a} /> : capabilities.canCheckin ? (
                             <button
                               type="button"
                               className={`checkin-toggle-badge ${a.checkinEnabled ? 'is-on' : 'is-off'}`}
@@ -2042,7 +2045,7 @@ export default function Accounts() {
                             >
                               模型
                             </button>
-                            {capabilities.canCheckin && (
+                            {a.nexavlinks ? <NexaAccountCheckin account={a} onChanged={load} /> : capabilities.canCheckin && (
                               <button onClick={() => withLoading(`checkin-${a.id}`, () => api.triggerCheckin(a.id), '签到完成')} disabled={actionLoading[`checkin-${a.id}`]} className="btn btn-link btn-link-warning">
                                 {actionLoading[`checkin-${a.id}`] ? <span className="spinner spinner-sm" /> : '签到'}
                               </button>

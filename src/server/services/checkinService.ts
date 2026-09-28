@@ -1,3 +1,4 @@
+import { isNexavlinksSite, getNexavlinksProgress } from './nexavlinksService.js';
 import { db, schema } from '../db/index.js';
 import { getAdapter } from './platforms/index.js';
 import { eq, and } from 'drizzle-orm';
@@ -168,6 +169,12 @@ export async function checkinAccount(accountId: number, options?: { skipEvent?: 
     };
   }
 
+  if (isNexavlinksSite(site)) {
+    const progress = (await getNexavlinksProgress([{ account, site }], { force: true })).get(account.id);
+    return progress?.checked
+      ? { success: true, status: 'success' as const, message: 'NexaVlinks 今日已签到' }
+      : { success: true, status: 'skipped' as const, skipped: true, reason: 'manual_required', message: '请在原站登录对应账号并手动完成签到，再刷新进度。' };
+  }
   const adapter = getAdapter(site.platform);
   if (!adapter) return { success: false, status: 'failed' as const, message: `unsupported platform: ${site.platform}` };
 

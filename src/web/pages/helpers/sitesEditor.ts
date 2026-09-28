@@ -16,6 +16,8 @@ export type SiteForm = {
   url: string;
   externalCheckinUrl: string;
   platform: string;
+  balanceQueryMode: 'default' | 'usage';
+  upstreamProtocol: 'auto' | 'responses';
   proxyUrl: string;
   useSystemProxy: boolean;
   apiEndpoints: SiteApiEndpointField[];
@@ -32,6 +34,8 @@ export type SiteSavePayload = {
   url: string;
   externalCheckinUrl: string;
   platform: string;
+  balanceQueryMode?: SiteForm['balanceQueryMode'];
+  upstreamProtocol?: SiteForm['upstreamProtocol'];
   initializationPresetId?: string | null;
   proxyUrl: string;
   useSystemProxy: boolean;
@@ -71,6 +75,8 @@ export function emptySiteForm(): SiteForm {
     url: '',
     externalCheckinUrl: '',
     platform: '',
+    balanceQueryMode: 'default',
+    upstreamProtocol: 'auto',
     proxyUrl: '',
     useSystemProxy: false,
     apiEndpoints: [emptySiteApiEndpoint()],
@@ -147,6 +153,8 @@ export function siteFormFromSite(site: Partial<Omit<SiteForm, 'apiEndpoints' | '
     url: site.url ?? '',
     externalCheckinUrl: site.externalCheckinUrl ?? '',
     platform: site.platform ?? '',
+    balanceQueryMode: site.balanceQueryMode === 'usage' ? 'usage' : 'default',
+    upstreamProtocol: site.upstreamProtocol === 'responses' ? 'responses' : 'auto',
     proxyUrl: site.proxyUrl ?? '',
     useSystemProxy: !!site.useSystemProxy,
     apiEndpoints: parseApiEndpointsForEditor(site.apiEndpoints),

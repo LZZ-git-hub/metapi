@@ -3,6 +3,11 @@ dist
 data
 .git
 .env
+.env.*
+profile
+*.db
+*.sqlite
+*.sqlite3
 *.md
 docs
 .github

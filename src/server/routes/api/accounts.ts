@@ -1,3 +1,5 @@
+import { loadSiteBalanceQueries, getStoredBalanceUnit } from '../../services/siteBalanceQuery.js';
+import { getNexavlinksProgress } from '../../services/nexavlinksService.js';
 import { FastifyInstance } from 'fastify';
 import { db, schema, runtimeDbDialect } from '../../db/index.js';
 import { getInsertedRowId, insertAndGetById } from '../../db/insertHelpers.js';
@@ -472,6 +474,8 @@ export async function accountsRoutes(app: FastifyInstance) {
       .innerJoin(schema.sites, eq(schema.accounts.siteId, schema.sites.id)).all();
 
     const { localDay, startUtc, endUtc } = getLocalDayRangeUtc();
+    const nexavlinksProgress = await getNexavlinksProgress(rows.map(row => ({ account: row.accounts, site: row.sites })));
+    const balanceQueries = await loadSiteBalanceQueries(rows.map(row => row.sites.id));
 
     // Aggregate today's spend per account from proxy logs
     const todaySpendRows = await db.select({
@@ -530,7 +534,9 @@ export async function accountsRoutes(app: FastifyInstance) {
         ...r.accounts,
         site: r.sites,
         credentialMode,
-        capabilities,
+        balanceUnit: getStoredBalanceUnit(r.accounts.extraConfig),
+        capabilities: { ...capabilities, canRefreshBalance: capabilities.canRefreshBalance || balanceQueries.get(r.sites.id) === 'usage' },
+        nexavlinks: nexavlinksProgress.get(r.accounts.id) || null,
         todaySpend: Math.round((spendByAccount[r.accounts.id] || 0) * 1_000_000) / 1_000_000,
         todayReward: Math.round(estimateRewardWithTodayIncomeFallback({
           day: localDay,

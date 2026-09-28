@@ -1,3 +1,5 @@
+import { loadSiteBalanceQueries, saveSiteBalanceQuery, deleteSiteBalanceQuery } from '../../services/siteBalanceQuery.js';
+import { getSiteUpstreamProtocol, loadSiteUpstreamProtocols, saveSiteUpstreamProtocol, deleteSiteUpstreamProtocol, supportsForcedResponses } from '../../services/siteUpstreamProtocol.js';
 import { FastifyInstance, FastifyReply } from 'fastify';
 import { db, schema } from '../../db/index.js';
 import { getInsertedRowId } from '../../db/insertHelpers.js';
@@ -249,8 +251,12 @@ async function loadSiteApiEndpointsBySiteIds(siteIds: number[]) {
 
 async function attachSiteApiEndpoints<T extends { id: number }>(siteRows: T[]) {
   const bySiteId = await loadSiteApiEndpointsBySiteIds(siteRows.map((row) => row.id));
+  const protocols = await loadSiteUpstreamProtocols(siteRows.map(row => row.id));
+  const balanceQueries = await loadSiteBalanceQueries(siteRows.map(row => row.id));
   return siteRows.map((row) => ({
     ...row,
+    upstreamProtocol: protocols.get(row.id) || 'auto',
+    balanceQueryMode: balanceQueries.get(row.id) || 'default',
     apiEndpoints: bySiteId.get(row.id) || [],
   }));
 }
@@ -540,6 +546,9 @@ export async function sitesRoutes(app: FastifyInstance) {
     if (!detectedPlatform) {
       return { error: 'Could not detect platform. Please specify manually.' };
     }
+    if (createBody.upstreamProtocol === 'responses' && !supportsForcedResponses(detectedPlatform)) {
+      return reply.code(400).send({ error: '该平台使用专用协议，请将上游请求协议设为自动。' });
+    }
     const conflictingSite = findExistingSiteBinding(existingSites, detectedPlatform, canonicalUrl);
     if (conflictingSite) {
       return sendSiteBindingConflict(reply, detectedPlatform, canonicalUrl);
@@ -562,6 +571,8 @@ export async function sitesRoutes(app: FastifyInstance) {
           globalWeight: normalizedGlobalWeight ?? 1,
         }).run();
         const siteId = getInsertedRowId(siteInsert);
+        if (siteId && createBody.balanceQueryMode !== undefined) await saveSiteBalanceQuery(siteId, createBody.balanceQueryMode, tx);
+        if (siteId && createBody.upstreamProtocol !== undefined) await saveSiteUpstreamProtocol(siteId, createBody.upstreamProtocol, tx);
         if (siteId && normalizedApiEndpoints.present && normalizedApiEndpoints.apiEndpoints.length > 0) {
           await tx.insert(schema.siteApiEndpoints).values(
             normalizedApiEndpoints.apiEndpoints.map((row) => ({
@@ -660,6 +671,10 @@ export async function sitesRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Invalid platform. Expected non-empty string.' });
     }
     const siteIdentityChanged = nextUrl !== existingSite.url || nextPlatform !== existingSite.platform;
+    const nextProtocol = body.upstreamProtocol ?? await getSiteUpstreamProtocol(id);
+    if (nextProtocol === 'responses' && !supportsForcedResponses(nextPlatform)) {
+      return reply.code(400).send({ error: '该平台使用专用协议，请将上游请求协议设为自动。' });
+    }
     if (siteIdentityChanged) {
       const siteRows = await db.select({
         id: schema.sites.id,
@@ -687,6 +702,8 @@ export async function sitesRoutes(app: FastifyInstance) {
     try {
       await db.transaction(async (tx) => {
         await tx.update(schema.sites).set(updates).where(eq(schema.sites.id, id)).run();
+        if (body.balanceQueryMode !== undefined) await saveSiteBalanceQuery(id, body.balanceQueryMode, tx);
+        if (body.upstreamProtocol !== undefined) await saveSiteUpstreamProtocol(id, body.upstreamProtocol, tx);
         if (normalizedApiEndpoints.present) {
           await tx.delete(schema.siteApiEndpoints)
             .where(eq(schema.siteApiEndpoints.siteId, id))
@@ -722,7 +739,11 @@ export async function sitesRoutes(app: FastifyInstance) {
   // Delete a site
   app.delete<{ Params: { id: string } }>('/api/sites/:id', async (request) => {
     const id = parseInt(request.params.id);
-    await db.delete(schema.sites).where(eq(schema.sites.id, id)).run();
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.sites).where(eq(schema.sites.id, id)).run();
+      await deleteSiteUpstreamProtocol(id, tx);
+      await deleteSiteBalanceQuery(id, tx);
+    });
     invalidateSiteCaches();
     return { success: true };
   });
@@ -754,7 +775,11 @@ export async function sitesRoutes(app: FastifyInstance) {
 
       try {
         if (action === 'delete') {
-          await db.delete(schema.sites).where(eq(schema.sites.id, id)).run();
+          await db.transaction(async (tx) => {
+            await tx.delete(schema.sites).where(eq(schema.sites.id, id)).run();
+            await deleteSiteUpstreamProtocol(id, tx);
+            await deleteSiteBalanceQuery(id, tx);
+          });
         } else if (action === 'enableSystemProxy') {
           await db.update(schema.sites)
             .set({ useSystemProxy: true, updatedAt: new Date().toISOString() })

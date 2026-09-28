@@ -1,3 +1,4 @@
+import { getSiteBalanceQuery, refreshUsageBalance } from './siteBalanceQuery.js';
 import { db, schema } from '../db/index.js';
 import { getAdapter } from './platforms/index.js';
 import { eq } from 'drizzle-orm';
@@ -264,6 +265,9 @@ export async function refreshBalance(accountId: number) {
     };
   }
 
+  if (await getSiteBalanceQuery(site.id) === 'usage') {
+    return refreshUsageBalance(account, site);
+  }
   const adapter = getAdapter(site.platform);
   if (!adapter) return null;
 
@@ -380,7 +384,7 @@ export async function refreshBalance(accountId: number) {
     } catch {}
   }
 
-  let nextExtraConfig = activeExtraConfig;
+  let nextExtraConfig: string | null = mergeAccountExtraConfig(activeExtraConfig, { balanceUnit: 'USD' });
   if (typeof balanceInfo.todayIncome === 'number' && Number.isFinite(balanceInfo.todayIncome)) {
     nextExtraConfig = updateTodayIncomeSnapshot(nextExtraConfig, balanceInfo.todayIncome);
   }

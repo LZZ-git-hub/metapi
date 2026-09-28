@@ -790,6 +790,9 @@ export const api = {
 
   // Check-in
   triggerCheckinAll: () => request('/api/checkin/trigger', { method: 'POST' }),
+  getNexaSettings: () => request('/api/nexavlinks/settings'),
+  saveNexaSettings: (data: { enabled: boolean; target: number }) => request('/api/nexavlinks/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  syncNexaAccount: (id: number) => request(`/api/nexavlinks/accounts/${id}/sync`, { method: 'POST' }),
   triggerCheckin: (id: number) => request(`/api/checkin/trigger/${id}`, { method: 'POST' }),
   getCheckinLogs: (params?: string) => request(`/api/checkin/logs${params ? '?' + params : ''}`),
   updateCheckinSchedule: (cron: string) => request('/api/checkin/schedule', { method: 'PUT', body: JSON.stringify({ cron }) }),

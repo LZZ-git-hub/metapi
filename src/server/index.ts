@@ -8,6 +8,7 @@ import {
 import { authMiddleware } from './middleware/auth.js';
 import { sitesRoutes } from './routes/api/sites.js';
 import { accountsRoutes } from './routes/api/accounts.js';
+import { nexavlinksRoutes } from './routes/api/nexavlinks.js';
 import { checkinRoutes } from './routes/api/checkin.js';
 import { tokensRoutes } from './routes/api/tokens.js';
 import { statsRoutes } from './routes/api/stats.js';
@@ -207,6 +208,7 @@ await app.register(registerDesktopRoutes);
 await app.register(sitesRoutes);
 await app.register(accountsRoutes);
 await app.register(checkinRoutes);
+await app.register(nexavlinksRoutes);
 await app.register(tokensRoutes);
 await app.register(statsRoutes);
 await app.register(authRoutes);

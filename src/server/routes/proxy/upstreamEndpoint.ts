@@ -1,3 +1,4 @@
+import { getSiteUpstreamProtocol, supportsForcedResponses } from '../../services/siteUpstreamProtocol.js';
 import { randomUUID } from 'node:crypto';
 import {
   rankConversationFileEndpoints,
@@ -526,6 +527,13 @@ export async function resolveUpstreamEndpointCandidates(
   },
 ): Promise<UpstreamEndpoint[]> {
   const sitePlatform = normalizePlatformName(context.site.platform);
+  if (await getSiteUpstreamProtocol(context.site.id) === 'responses') {
+    if (!supportsForcedResponses(sitePlatform)) {
+      throw new Error('该平台使用专用协议，请将上游请求协议设为自动。');
+    }
+    // 固定协议必须早于能力推断、历史偏好和失败回退。
+    return ['responses'];
+  }
   const capabilityProfile = buildEndpointCapabilityProfile({
     modelName,
     requestedModelHint,

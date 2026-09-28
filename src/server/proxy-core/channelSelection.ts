@@ -5,6 +5,7 @@ import type { DownstreamRoutingPolicy } from '../services/downstreamPolicyTypes.
 import { tokenRouter } from '../services/tokenRouter.js';
 
 type SelectedChannel = Awaited<ReturnType<typeof tokenRouter.selectChannel>>;
+const sessionSelectionQueues = new Map<string, Promise<SelectedChannel>>();
 
 export const TESTER_FORCED_CHANNEL_HEADER = 'x-metapi-tester-forced-channel-id';
 export const TESTER_REQUEST_HEADER = 'x-metapi-tester-request';
@@ -81,14 +82,32 @@ export function canRetryChannelSelection(retryCount: number, forcedChannelId?: n
   return canRetryProxyChannel(retryCount);
 }
 
-export async function selectProxyChannelForAttempt(input: {
+type ChannelSelectionInput = {
   requestedModel: string;
   downstreamPolicy: DownstreamRoutingPolicy;
   excludeChannelIds: number[];
   retryCount: number;
   stickySessionKey?: string | null;
   forcedChannelId?: number | null;
-}): Promise<SelectedChannel> {
+};
+
+export async function selectProxyChannelForAttempt(input: ChannelSelectionInput): Promise<SelectedChannel> {
+  const key = input.stickySessionKey;
+  if (!key || normalizeForcedChannelId(input.forcedChannelId) !== null) {
+    return selectChannelForAttempt(input);
+  }
+  // 仅串行化同一会话的选路，先建立绑定，避免并发首请求各选一个 Key。
+  const previous = sessionSelectionQueues.get(key) || Promise.resolve();
+  const pending = previous.catch(() => {}).then(() => selectChannelForAttempt(input));
+  sessionSelectionQueues.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (sessionSelectionQueues.get(key) === pending) sessionSelectionQueues.delete(key);
+  }
+}
+
+async function selectChannelForAttempt(input: ChannelSelectionInput): Promise<SelectedChannel> {
   const normalizedForcedChannelId = normalizeForcedChannelId(input.forcedChannelId);
   if (normalizedForcedChannelId !== null) {
     if (input.retryCount > 0) return null;
@@ -101,6 +120,10 @@ export async function selectProxyChannelForAttempt(input: {
   }
 
   let selected: SelectedChannel = null;
+  let routingReason = input.stickySessionKey
+    ? '首次分配（新会话或绑定已过期）'
+    : '常规分配（无稳定会话标识）';
+  if (input.retryCount > 0) routingReason = '故障切换（此前尝试的通道不可用）';
   let refreshedRoutes = false;
 
   const refreshRoutesForFirstAttempt = async (): Promise<boolean> => {
@@ -123,18 +146,25 @@ export async function selectProxyChannelForAttempt(input: {
         preferredChannelId,
         input.downstreamPolicy,
         input.excludeChannelIds,
+        true,
       );
       if (!selected) {
-        const refreshSucceeded = await refreshRoutesForFirstAttempt();
+        await refreshRoutesForFirstAttempt();
         selected = await tokenRouter.selectPreferredChannel(
           input.requestedModel,
           preferredChannelId,
           input.downstreamPolicy,
           input.excludeChannelIds,
+          true,
         );
-        if (!selected && refreshSucceeded) {
+        if (!selected) {
           proxyChannelCoordinator.clearStickyChannel(input.stickySessionKey, preferredChannelId);
         }
+      }
+      routingReason = '故障切换（原会话通道不可用）';
+      if (selected) {
+        routingReason = selected.channel.id === preferredChannelId
+          ? '会话复用' : '站点优先规则切换';
       }
     }
   }
@@ -154,5 +184,7 @@ export async function selectProxyChannelForAttempt(input: {
     selected = await tokenRouter.selectChannel(input.requestedModel, input.downstreamPolicy);
   }
 
-  return selected;
+  if (!selected) return null;
+  proxyChannelCoordinator.bindStickyChannel(input.stickySessionKey, selected.channel.id);
+  return { ...selected, routingReason };
 }

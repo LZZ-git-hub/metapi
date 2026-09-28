@@ -24,6 +24,7 @@ type SelectedChannel = Awaited<ReturnType<typeof tokenRouter.selectChannel>>;
 type SurfaceWarningScope = 'chat' | 'responses';
 
 type SurfaceSelectedChannel = {
+  routingReason?: string;
   channel: { routeId: number | null; id: number };
   account: { id: number; username?: string | null };
   site: { name?: string | null };
@@ -139,10 +140,12 @@ export function bindSurfaceStickyChannel(input: {
     account?: { extraConfig?: string | null; oauthProvider?: string | null } | null;
   };
 }): void {
+  const current = proxyChannelCoordinator.getStickyChannelId(input.stickySessionKey);
+  // 较早的并发请求完成时，不覆盖其他请求已完成的故障切换。
+  if (current && current !== input.selected.channel.id) return;
   proxyChannelCoordinator.bindStickyChannel(
     input.stickySessionKey,
     input.selected.channel.id,
-    input.selected.account || undefined,
   );
 }
 
@@ -184,6 +187,7 @@ export function buildSurfaceChannelBusyMessage(waitMs: number): string {
 export async function writeSurfaceProxyLog(input: {
   warningScope: string;
   selected: {
+    routingReason?: string;
     channel: { routeId: number | null; id: number | null };
     account: { id: number | null };
     actualModel?: string | null;
@@ -218,7 +222,10 @@ export async function writeSurfaceProxyLog(input: {
       downstreamPath: input.downstreamPath,
       upstreamPath: input.upstreamPath || null,
       usageSource: input.usageSource || null,
-      errorMessage: input.errorMessage,
+      errorMessage: [
+        input.selected.routingReason ? `路由：${input.selected.routingReason}` : null,
+        input.errorMessage,
+      ].filter(Boolean).join('；'),
     });
     await insertProxyLog({
       routeId: input.selected.channel.routeId,
@@ -517,6 +524,12 @@ export function createSurfaceFailureToolkit(input: {
     });
   };
 
+  const hasSession = !!input.clientContext?.sessionId;
+  const isUncertainFailure = (status: number, message: string) => hasSession && (
+    status === 408 || status === 504
+    || /timeout|timed\s*out|超时|econnreset|socket|connection\s*(?:closed|reset)|fetch failed|aborted/i.test(message || '')
+  );
+  const noReplayHint = '上游是否已处理无法确认，已停止自动换 Key 重试';
   const maybeRetry = (retryCount: number) => retryCount < input.maxRetries
     ? { action: 'retry' as const }
     : null;
@@ -544,6 +557,7 @@ export function createSurfaceFailureToolkit(input: {
       retryCount: number;
     }): Promise<SurfaceFailureOutcome> {
       const rawErrText = args.rawErrText || args.errText;
+      const uncertain = isUncertainFailure(args.status, rawErrText);
       await tokenRouter.recordFailure(args.selected.channel.id, {
         status: args.status,
         errorText: rawErrText,
@@ -557,7 +571,7 @@ export function createSurfaceFailureToolkit(input: {
         isStream: args.isStream ?? null,
         firstByteLatencyMs: args.firstByteLatencyMs ?? null,
         latencyMs: args.latencyMs,
-        errorMessage: args.errText,
+        errorMessage: uncertain ? `${args.errText}；${noReplayHint}` : args.errText,
         retryCount: args.retryCount,
       });
       runBestEffort('record oauth quota reset hint', () => recordOauthQuotaResetHint({
@@ -575,7 +589,7 @@ export function createSurfaceFailureToolkit(input: {
         }));
       }
 
-      if (shouldRetryProxyRequest(args.status, args.errText)) {
+      if (!uncertain && shouldRetryProxyRequest(args.status, args.errText)) {
         const retry = maybeRetry(args.retryCount);
         if (retry) return retry;
       }
@@ -611,6 +625,7 @@ export function createSurfaceFailureToolkit(input: {
       totalTokens?: number | null;
       upstreamPath?: string | null;
     }): Promise<SurfaceFailureOutcome> {
+      const uncertain = isUncertainFailure(args.failure.status, args.failure.reason);
       await tokenRouter.recordFailure(args.selected.channel.id, {
         status: args.failure.status,
         errorText: args.failure.reason,
@@ -624,7 +639,7 @@ export function createSurfaceFailureToolkit(input: {
         isStream: args.isStream ?? null,
         firstByteLatencyMs: args.firstByteLatencyMs ?? null,
         latencyMs: args.latencyMs,
-        errorMessage: args.failure.reason,
+        errorMessage: uncertain ? `${args.failure.reason}；${noReplayHint}` : args.failure.reason,
         retryCount: args.retryCount,
         promptTokens: args.promptTokens,
         completionTokens: args.completionTokens,
@@ -632,7 +647,7 @@ export function createSurfaceFailureToolkit(input: {
         upstreamPath: args.upstreamPath,
       });
 
-      if (shouldRetryProxyRequest(args.failure.status, args.failure.reason)) {
+      if (!uncertain && shouldRetryProxyRequest(args.failure.status, args.failure.reason)) {
         const retry = maybeRetry(args.retryCount);
         if (retry) return retry;
       }
@@ -676,11 +691,12 @@ export function createSurfaceFailureToolkit(input: {
         isStream: args.isStream ?? null,
         firstByteLatencyMs: args.firstByteLatencyMs ?? null,
         latencyMs: args.latencyMs,
-        errorMessage: args.errorMessage,
+        errorMessage: hasSession ? `${args.errorMessage}；${noReplayHint}` : args.errorMessage,
         retryCount: args.retryCount,
       });
 
-      const retry = maybeRetry(args.retryCount);
+      // 执行异常可能发生在上游已接收之后，不自动重放有会话标识的请求。
+      const retry = hasSession ? null : maybeRetry(args.retryCount);
       if (retry) return retry;
 
       runBestEffort('report proxy all failed', () => reportProxyAllFailed({

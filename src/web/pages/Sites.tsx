@@ -53,6 +53,8 @@ type SiteRow = {
   url: string;
   externalCheckinUrl?: string | null;
   platform?: string;
+  balanceQueryMode?: SiteForm['balanceQueryMode'];
+  upstreamProtocol?: SiteForm['upstreamProtocol'];
   status?: string;
   proxyUrl?: string | null;
   useSystemProxy?: boolean;
@@ -255,6 +257,7 @@ export default function Sites() {
   };
   const createEmptySiteForm = (): SiteForm => hydrateSiteForm(emptySiteForm());
   const [form, setForm] = useState<SiteForm>(() => createEmptySiteForm());
+  const usesNativeProtocol = ['claude', 'gemini', 'codex', 'gemini-cli', 'antigravity'].includes(form.platform.trim().toLowerCase());
   const [detecting, setDetecting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -528,6 +531,10 @@ export default function Sites() {
 
   const handleSave = async () => {
     if (!editor) return;
+    if (usesNativeProtocol && form.upstreamProtocol === 'responses') {
+      toast.error('该平台使用专用协议，请将上游请求协议设为自动');
+      return;
+    }
     const parsedGlobalWeight = Number(form.globalWeight);
     if (!Number.isFinite(parsedGlobalWeight) || parsedGlobalWeight <= 0) {
       toast.error('全局权重必须是大于 0 的数字');
@@ -549,6 +556,8 @@ export default function Sites() {
       url: primarySiteUrlAnalysis.persistedUrl || form.url.trim(),
       externalCheckinUrl: form.externalCheckinUrl.trim(),
       platform: form.platform.trim(),
+      balanceQueryMode: form.balanceQueryMode,
+      upstreamProtocol: form.upstreamProtocol,
       initializationPresetId: selectedInitializationPresetId,
       proxyUrl: form.proxyUrl.trim(),
       useSystemProxy: !!form.useSystemProxy,
@@ -1485,6 +1494,40 @@ export default function Sites() {
               </div>
             )}
           </div>
+          <ResponsiveFormGrid>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span>余额查询方式</span>
+              <ModernSelect
+                data-testid="site-balance-query-mode-select"
+                value={form.balanceQueryMode}
+                onChange={(value) => setForm((prev) => ({ ...prev, balanceQueryMode: value === 'usage' ? 'usage' : 'default' }))}
+                options={[
+                  { value: 'default', label: '平台默认' },
+                  { value: 'usage', label: 'GET /v1/usage（API Key）' },
+                ]}
+              />
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                默认查询为零或不支持时可手动切换。保存后到账号管理刷新余额；优先使用该连接的默认或首个可用令牌，再使用账号保存的 API Key。多个 Key 不累加，单位由接口返回，缺省 USD。
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span>上游请求协议</span>
+              <ModernSelect
+                data-testid="site-upstream-protocol-select"
+                value={form.upstreamProtocol}
+                onChange={(value) => setForm((prev) => ({ ...prev, upstreamProtocol: value === 'responses' ? 'responses' : 'auto' }))}
+                options={[
+                  { value: 'auto', label: '自动（原有逻辑）' },
+                  { value: 'responses', label: '仅 Responses（/v1/responses）', disabled: usesNativeProtocol },
+                ]}
+              />
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                {usesNativeProtocol
+                  ? '该平台使用专用协议，请选择自动。'
+                  : 'NexaVlinks 可选“仅 Responses”。失败时不切换 Chat 或 Messages；压缩请求仍使用 Responses 的 compact 接口。'}
+              </div>
+            </div>
+          </ResponsiveFormGrid>
           <ResponsiveFormGrid>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <input

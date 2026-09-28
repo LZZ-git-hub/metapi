@@ -1,0 +1,38 @@
+.nexa-priority {
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.nexa-priority p,
+.nexa-priority [role="status"] {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.nexa-priority-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.nexa-priority-controls input[type="number"] {
+  width: 90px;
+}
+
+.nexa-usage {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 130px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexa-usage progress {
+  width: 130px;
+  height: 4px;
+  accent-color: var(--color-primary);
+}
