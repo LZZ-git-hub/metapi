@@ -1,0 +1,30 @@
+[Unit]
+Description=Metapi LAN service
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=metapi
+Group=metapi
+WorkingDirectory=/opt/metapi/current
+EnvironmentFile=/etc/metapi/metapi.env
+Environment=PATH=/opt/metapi/node/bin:/usr/bin:/bin
+ExecStartPre=/opt/metapi/node/bin/node dist/server/db/migrate.js
+ExecStart=/opt/metapi/node/bin/node dist/server/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/metapi
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

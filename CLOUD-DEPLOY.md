@@ -1,5 +1,7 @@
 # 二开版本云部署
 
+Linux 内网服务器（含 LXC）的独立部署方案见 [Linux 内网部署](deploy/linux/README.md)。以下章节保留 Render / TiDB 云端方案。
+
 基于官方 Metapi v1.3.0（提交 `63c435c90189d175ccdb533bbdc1cf52e3996b41`），将现有 Windows 桌面包中的服务端和管理界面改动迁回源码。原桌面包未修改。
 
 ## 云端功能

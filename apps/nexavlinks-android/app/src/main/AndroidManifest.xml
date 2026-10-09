@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<application android:name=".CheckinApplication" android:label="Nexa 签到助手" android:theme="@style/AppTheme"
+    android:icon="@drawable/ic_launcher" android:allowBackup="false" android:fullBackupContent="false"
+    android:usesCleartextTraffic="false" android:supportsRtl="true">
+    <receiver android:name=".ExpiryReminderReceiver" android:exported="false">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+            <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            <action android:name="android.intent.action.TIME_SET" />
+            <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+        </intent-filter>
+    </receiver>
+    <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">
+        <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+    <activity android:name=".Slot1Activity" android:process=":account1" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot2Activity" android:process=":account2" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot3Activity" android:process=":account3" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot4Activity" android:process=":account4" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot5Activity" android:process=":account5" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot6Activity" android:process=":account6" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot7Activity" android:process=":account7" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot8Activity" android:process=":account8" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity android:name=".Slot9Activity" android:process=":account9" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+</application>
+</manifest>
